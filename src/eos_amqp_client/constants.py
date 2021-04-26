@@ -1,0 +1,12 @@
+LOG_LEVEL = 'INFO'
+
+ROUTING_KEYS_TO_LISTEN_TO = []
+HOST = 'localhost'
+USE_TLS = False
+PORT = 5672
+USERNAME = 'rabbitmq'
+PASSWORD = 'rabbitmq'
+AMQP_RECONNECT_SECONDS = 3
+EXCHANGE_NAME = 'amq.topic'
+EXCHANGE_TYPE = 'topic'
+RPC_TIMEOUT_SECONDS = 3
