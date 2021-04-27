@@ -10,7 +10,7 @@ setup(
     ],
     author='Amo DelBello',
     author_email='adelbello@meowwolf.com',
-    license='unlicense',
+    license='unlicensed',
     packages=['eos_amqp_client'],
     zip_safe=False
 )

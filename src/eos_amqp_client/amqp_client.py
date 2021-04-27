@@ -1,3 +1,14 @@
+import asyncio
+from asyncio.events import AbstractEventLoop
+from typing import Callable, Dict, List
+from aio_pika.channel import Channel
+
+from aio_pika.connection import ConnectionType
+from aio_pika.exchange import Exchange
+from aio_pika.message import IncomingMessage
+from aio_pika.queue import Queue
+from aio_pika.robust_connection import RobustConnection
+
 from .constants import (
     ROUTING_KEYS_TO_LISTEN_TO,
     HOST,
@@ -12,62 +23,60 @@ from .constants import (
 )
 from .logger import create_logger
 from .helpers import (
-    payload_to_args,
     pretty_format,
     get_routing_key_to_address_list,
     get_incoming_routing_key_list,
-    get_address_by_routing_key,
 )
 from .rpc_request import RpcRequest
-import asyncio
 from aio_pika import (
     connect_robust,
-    IncomingMessage,
     Message,
 )
 log = create_logger(__name__)
-
-MESSAGE_FROM_FIELD = 'message_from'
 
 
 class AmqpClient:
     def __init__(
         self,
-        routing_key_string=ROUTING_KEYS_TO_LISTEN_TO,
-        host=HOST,
-        port=PORT,
-        username=USERNAME,
-        password=PASSWORD,
-        amqp_reconnect_seconds=AMQP_RECONNECT_SECONDS,
-        rpc_timeout=RPC_TIMEOUT_SECONDS,
-        rpc_request=None,
-        exchange_name=EXCHANGE_NAME,
-        exchange_type=EXCHANGE_TYPE,
+        routing_key_string: str = ROUTING_KEYS_TO_LISTEN_TO,
+        host: str = HOST,
+        port: int = PORT,
+        username: str = USERNAME,
+        password: str = PASSWORD,
+        amqp_reconnect_seconds: int = AMQP_RECONNECT_SECONDS,
+        rpc_timeout: int = RPC_TIMEOUT_SECONDS,
+        rpc_request: bool = None,
+        exchange_name: str = EXCHANGE_NAME,
+        exchange_type: str = EXCHANGE_TYPE,
     ):
-        self.host = host
-        self.port = port
-        self.username = username
-        self.password = password
-        self.amqp_reconnect_seconds = amqp_reconnect_seconds
-        self.rpc_timeout = rpc_timeout
-        self.rpc_request = rpc_request
-        self.routing_key_to_address_list = get_routing_key_to_address_list(
+        """Creates Anchor class from Anchor dict, probably originating from Core API response.
+        Args:
+            anchor_dict (dict): Anchor JSON object.
+        """
+        self.host: str = host
+        self.port: int = port
+        self.username: str = username
+        self.password: str = password
+        self.amqp_reconnect_seconds: int = amqp_reconnect_seconds
+        self.rpc_timeout: int = rpc_timeout
+        self.rpc_request: bool = rpc_request
+        self.routing_key_to_address_list: List[List[str], None] = get_routing_key_to_address_list(
             routing_key_string)
-        self.routing_keys = get_incoming_routing_key_list(
+        self.routing_keys: List[str] = get_incoming_routing_key_list(
             self.routing_key_to_address_list)
-        self.exchange = None
-        self.channel = None
-        self.exchange_name = exchange_name
-        self.exchange_type = exchange_type
+        self.exchange: str = None
+        self.channel: str = None
+        self.exchange_name: str = exchange_name
+        self.exchange_type: str = exchange_type
 
-    async def connect(self, loop):
-        protocol = 'amqps' if USE_TLS is True else 'amqp'
+    async def connect(self, loop: AbstractEventLoop) -> RobustConnection:
+        protocol: str = 'amqps' if USE_TLS is True else 'amqp'
 
         try:
-            connection = await connect_robust(
+            connection: RobustConnection = await connect_robust(
                 f'{protocol}://{self.username}:{self.password}@{self.host}:{self.port}', loop=loop
             )
-            self.channel = await connection.channel()
+            self.channel: Channel = await connection.channel()
             await self.channel.set_qos(prefetch_count=10)
 
             return connection
@@ -76,17 +85,17 @@ class AmqpClient:
             await asyncio.sleep(self.amqp_reconnect_seconds)
             return await self.connect(loop)
 
-    async def consume(self, loop=asyncio.get_event_loop()):
-        connection = await self.connect(loop)
+    async def consume(self, loop: AbstractEventLoop = asyncio.get_event_loop()) -> RobustConnection:
+        connection: RobustConnection = await self.connect(loop)
 
-        self.exchange = await self.channel.declare_exchange(
+        self.exchange: Exchange = await self.channel.declare_exchange(
             name=self.exchange_name,
             type=self.exchange_type,
             durable=True,
             auto_delete=False
         )
 
-        queue = await self.channel.declare_queue(
+        queue: Queue = await self.channel.declare_queue(
             name=self.queue_name,
             auto_delete=True,
             exclusive=True,
@@ -100,37 +109,16 @@ class AmqpClient:
 
         return connection
 
-    async def handle_message(self, message: IncomingMessage):
-        # context manager handles acking for us
-        async with message.process():
-            try:
-                # we don't want to send a message back to ourselves
-                if message.headers.get(MESSAGE_FROM_FIELD) != self.device_name:
-                    payload = message.body.decode('utf-8')
-                    routing_key = message.routing_key
-
-                    log.info(
-                        f'Received amqp message: {routing_key}: {pretty_format(payload)}')
-                    log.debug(message)
-
-                    address = get_address_by_routing_key(
-                        routing_key, self.routing_key_to_address_list)
-
-                    args = payload_to_args(payload)
-
-            except Exception as err:  # pragma: no cover
-                log.error(f'Error handling incoming AMQP message: {err}')
-
-    async def publish(self, routing_key, payload, is_rpc=False):
+    async def publish(self, routing_key: str, payload: Dict, is_rpc: bool = False):
         try:
-            async def send_message(correlation_id='', reply_to=''):
+            async def send_message(correlation_id: str = '', reply_to: str = ''):
                 log.info(
                     f'Publishing amqp message: {routing_key}: {pretty_format(payload)}'
                 )
                 await self.exchange.publish(
                     Message(
                         body=bytes(payload, 'utf-8'),
-                        headers={MESSAGE_FROM_FIELD: self.device_name},
+                        headers={},
                         correlation_id=correlation_id,
                         reply_to=reply_to
                     ),
@@ -138,13 +126,13 @@ class AmqpClient:
                 )
 
             if is_rpc:
-                rpc_request = RpcRequest(
+                rpc_request: RpcRequest = RpcRequest(
                     channel=self.channel,
                     original_routing_key=routing_key,
                 ) if self.rpc_request is None else self.rpc_request
 
                 await rpc_request.declare_queue()
-                message_handler = rpc_request.create_message_handler(
+                message_handler: Callable[[IncomingMessage], None] = rpc_request.create_message_handler(
                     self.handle_message)
                 await rpc_request.queue.consume(message_handler)
                 await send_message(rpc_request.correlation_id, rpc_request.reply_to)
