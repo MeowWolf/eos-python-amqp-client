@@ -1,11 +1,9 @@
 import asyncio
 from asyncio.events import AbstractEventLoop
-from typing import Callable, Dict, List
+from typing import Callable, List
 from aio_pika.channel import Channel
 
-from aio_pika.connection import ConnectionType
 from aio_pika.exchange import Exchange
-from aio_pika.message import IncomingMessage
 from aio_pika.queue import Queue
 from aio_pika.robust_connection import RobustConnection
 
@@ -24,8 +22,6 @@ from .constants import (
 from .logger import create_logger
 from .helpers import (
     pretty_format,
-    get_routing_key_to_address_list,
-    get_incoming_routing_key_list,
 )
 from .rpc_request import RpcRequest
 from aio_pika import (
@@ -49,10 +45,9 @@ class AmqpClient:
         exchange_name: str = EXCHANGE_NAME,
         exchange_type: str = EXCHANGE_TYPE,
     ):
-        """Creates Anchor class from Anchor dict, probably originating from Core API response.
-        Args:
-            anchor_dict (dict): Anchor JSON object.
-        """
+        self.connection: RobustConnection = None
+        self.exchange: Exchange = None
+
         self.host: str = host
         self.port: int = port
         self.username: str = username
@@ -60,12 +55,7 @@ class AmqpClient:
         self.amqp_reconnect_seconds: int = amqp_reconnect_seconds
         self.rpc_timeout: int = rpc_timeout
         self.rpc_request: bool = rpc_request
-        self.routing_key_to_address_list: List[List[str], None] = get_routing_key_to_address_list(
-            routing_key_string)
-        self.routing_keys: List[str] = get_incoming_routing_key_list(
-            self.routing_key_to_address_list)
-        self.exchange: str = None
-        self.channel: str = None
+        self.routing_keys: List[str] = []
         self.exchange_name: str = exchange_name
         self.exchange_type: str = exchange_type
 
@@ -73,43 +63,34 @@ class AmqpClient:
         protocol: str = 'amqps' if USE_TLS is True else 'amqp'
 
         try:
-            connection: RobustConnection = await connect_robust(
+            self.connection = await connect_robust(
                 f'{protocol}://{self.username}:{self.password}@{self.host}:{self.port}', loop=loop
             )
-            self.channel: Channel = await connection.channel()
-            await self.channel.set_qos(prefetch_count=10)
 
-            return connection
         except:  # pragma: no cover
             log.info(f'Could not connect to amqp broker. Retrying...')
             await asyncio.sleep(self.amqp_reconnect_seconds)
             return await self.connect(loop)
 
-    async def consume(self, loop: AbstractEventLoop = asyncio.get_event_loop()) -> RobustConnection:
-        connection: RobustConnection = await self.connect(loop)
+    async def create_channel(self) -> Channel:
+        try:
+            channel: Channel = await self.connection.channel()
+            await channel.set_qos(prefetch_count=10)
+            await self.declare_exchange(channel)
 
-        self.exchange: Exchange = await self.channel.declare_exchange(
+            return channel
+        except:  # pragma: no cover
+            log.error(f'Could not create channel.')
+
+    async def declare_exchange(self, channel: Channel) -> None:
+        self.exchange: Exchange = await channel.declare_exchange(
             name=self.exchange_name,
             type=self.exchange_type,
             durable=True,
             auto_delete=False
         )
 
-        queue: Queue = await self.channel.declare_queue(
-            name=self.queue_name,
-            auto_delete=True,
-            exclusive=True,
-            durable=False,
-        )
-        [await queue.bind(self.exchange, routing_key) for routing_key in self.routing_keys]
-        await queue.consume(self.handle_message)
-
-        log.info(f'AMQP connection established to: {self.exchange_name}')
-        log.info(f'listening to: {self.routing_keys}')
-
-        return connection
-
-    async def publish(self, routing_key: str, payload: Dict, is_rpc: bool = False):
+    async def publish(self, routing_key: str, payload: str, is_rpc: bool = False):
         try:
             async def send_message(correlation_id: str = '', reply_to: str = ''):
                 log.info(
@@ -132,7 +113,8 @@ class AmqpClient:
                 ) if self.rpc_request is None else self.rpc_request
 
                 await rpc_request.declare_queue()
-                message_handler: Callable[[IncomingMessage], None] = rpc_request.create_message_handler(
+                # message_handler: Callable[[IncomingMessage], None] = rpc_request.create_message_handler(
+                message_handler = rpc_request.create_message_handler(
                     self.handle_message)
                 await rpc_request.queue.consume(message_handler)
                 await send_message(rpc_request.correlation_id, rpc_request.reply_to)
@@ -144,3 +126,20 @@ class AmqpClient:
 
         except Exception as err:
             log.error(f'Error publishing AMQP message: {err}')
+
+    async def consume(self, loop: AbstractEventLoop = asyncio.get_event_loop()) -> RobustConnection:
+        connection: RobustConnection = await self.connect(loop)
+
+        queue: Queue = await self.channel.declare_queue(
+            name=self.queue_name,
+            auto_delete=True,
+            exclusive=True,
+            durable=False,
+        )
+        [await queue.bind(self.exchange, routing_key) for routing_key in self.routing_keys]
+        # await queue.consume(self.handle_message)
+
+        log.info(f'AMQP connection established to: {self.exchange_name}')
+        log.info(f'listening to: {self.routing_keys}')
+
+        return connection

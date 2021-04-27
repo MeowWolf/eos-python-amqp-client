@@ -2,7 +2,7 @@ from typing import List
 
 
 LOG_LEVEL: str = 'INFO'
-ROUTING_KEYS_TO_LISTEN_TO: List[str] = []
+ROUTING_KEYS_TO_LISTEN_TO: str = 'hi'
 HOST: str = 'localhost'
 USE_TLS: bool = False
 PORT: int = 5672

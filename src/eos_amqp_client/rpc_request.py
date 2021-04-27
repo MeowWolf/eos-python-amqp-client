@@ -8,7 +8,6 @@ from aio_pika import (
     Channel,
 )
 from .helpers import (
-    routing_key_to_address,
     uuid_str,
 )
 log = create_logger(__name__)
@@ -41,7 +40,7 @@ class RpcRequest:
         await self.channel.queue_delete(self.reply_to)
         self.queue_has_been_deleted = True
 
-    def create_message_handler(self, handle_message: Callable[[IncomingMessage]]) -> Callable[[IncomingMessage], None]:
+    def create_message_handler(self, handle_message: Callable[[IncomingMessage], None]) -> Callable[[IncomingMessage], None]:
         async def handle_rpc_message(message: IncomingMessage):
             if message.correlation_id == self.correlation_id:
                 message.routing_key = self.original_routing_key
@@ -53,8 +52,8 @@ class RpcRequest:
     async def timeout_request(self, send_osc_func):
         await asyncio.sleep(self.rpc_timeout)
         if self.queue_has_been_deleted is False:
-            address = routing_key_to_address(self.original_routing_key)
-            send_osc_func(
-                address, "Timed out waiting for AMQP rpc response.")
-            await self.delete_queue()
-            self.queue_has_been_deleted = True
+            # send_osc_func(
+            #     address, "Timed out waiting for AMQP rpc response.")
+            # await self.delete_queue()
+            # self.queue_has_been_deleted = True
+            pass
