@@ -41,7 +41,6 @@ class AmqpClient:
         password: str = PASSWORD,
         amqp_reconnect_seconds: int = AMQP_RECONNECT_SECONDS,
         rpc_timeout: int = RPC_TIMEOUT_SECONDS,
-        rpc_request: bool = None,
         exchange_name: str = EXCHANGE_NAME,
         exchange_type: str = EXCHANGE_TYPE,
     ):
@@ -54,7 +53,6 @@ class AmqpClient:
         self.password: str = password
         self.amqp_reconnect_seconds: int = amqp_reconnect_seconds
         self.rpc_timeout: int = rpc_timeout
-        self.rpc_request: bool = rpc_request
         self.routing_keys: List[str] = []
         self.exchange_name: str = exchange_name
         self.exchange_type: str = exchange_type
@@ -90,7 +88,14 @@ class AmqpClient:
             auto_delete=False
         )
 
-    async def publish(self, routing_key: str, payload: str, is_rpc: bool = False):
+    async def publish(
+        self,
+        routing_key: str,
+        payload: str,
+        is_rpc: bool = False,
+        channel: Channel = None,
+        handle_message: Callable[[IncomingMessage], None] = None,
+    ):
         try:
             async def send_message(correlation_id: str = '', reply_to: str = ''):
                 log.info(
@@ -108,19 +113,16 @@ class AmqpClient:
 
             if is_rpc:
                 rpc_request: RpcRequest = RpcRequest(
-                    channel=self.channel,
+                    channel=channel,
                     original_routing_key=routing_key,
-                ) if self.rpc_request is None else self.rpc_request
+                )
 
                 await rpc_request.declare_queue()
-                # message_handler: Callable[[IncomingMessage], None] = rpc_request.create_message_handler(
-                message_handler = rpc_request.create_message_handler(
-                    self.handle_message)
+                message_handler: Callable[[IncomingMessage], None] = rpc_request.create_message_handler(
+                    handle_message)
                 await rpc_request.queue.consume(message_handler)
                 await send_message(rpc_request.correlation_id, rpc_request.reply_to)
-                await rpc_request.timeout_request(
-                    # self.osc_client.send
-                )
+                asyncio.create_task(rpc_request.timeout_request())
             else:
                 await send_message()
 

@@ -49,11 +49,10 @@ class RpcRequest:
 
         return handle_rpc_message
 
-    async def timeout_request(self, send_osc_func):
+    async def timeout_request(self):
         await asyncio.sleep(self.rpc_timeout)
         if self.queue_has_been_deleted is False:
-            # send_osc_func(
-            #     address, "Timed out waiting for AMQP rpc response.")
-            # await self.delete_queue()
-            # self.queue_has_been_deleted = True
+            log.warn(f'Timed out waiting for AMQP rpc response.')
+            await self.delete_queue()
+            self.queue_has_been_deleted = True
             pass
