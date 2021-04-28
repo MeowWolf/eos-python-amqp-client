@@ -1,4 +1,5 @@
 from typing import Callable
+from uuid import uuid4
 from aio_pika.queue import Queue
 from .constants import RPC_TIMEOUT_SECONDS
 from .logger import create_logger
@@ -7,10 +8,11 @@ from aio_pika import (
     IncomingMessage,
     Channel,
 )
-from .helpers import (
-    uuid_str,
-)
 log = create_logger(__name__)
+
+
+def uuid_str():
+    return str(uuid4())
 
 
 class RpcRequest:

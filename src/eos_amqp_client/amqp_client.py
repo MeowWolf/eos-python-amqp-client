@@ -1,5 +1,4 @@
 import asyncio
-from asyncio.events import AbstractEventLoop
 from typing import Callable, List, Union
 from aio_pika.channel import Channel
 
@@ -9,7 +8,6 @@ from aio_pika.queue import Queue
 from aio_pika.robust_connection import RobustConnection
 
 from .constants import (
-    ROUTING_KEYS_TO_LISTEN_TO,
     HOST,
     USERNAME,
     USE_TLS,
@@ -21,9 +19,6 @@ from .constants import (
     RPC_TIMEOUT_SECONDS,
 )
 from .logger import create_logger
-from .helpers import (
-    pretty_format,
-)
 from .rpc_request import RpcRequest
 from aio_pika import (
     connect_robust,
@@ -57,18 +52,18 @@ class AmqpClient:
         self.exchange_name: str = exchange_name
         self.exchange_type: str = exchange_type
 
-    async def connect(self, loop: AbstractEventLoop) -> RobustConnection:
+    async def connect(self) -> RobustConnection:
         protocol: str = 'amqps' if USE_TLS is True else 'amqp'
 
         try:
             self.connection = await connect_robust(
-                f'{protocol}://{self.username}:{self.password}@{self.host}:{self.port}', loop=loop
+                f'{protocol}://{self.username}:{self.password}@{self.host}:{self.port}',
             )
 
-        except:
-            log.info(f'Could not connect to amqp broker. Retrying...')
+        except Exception as err:
+            log.error(f'Could not connect to amqp broker: {err}, Retrying...')
             await asyncio.sleep(self.amqp_reconnect_seconds)
-            return await self.connect(loop)
+            return await self.connect()
 
     async def create_channel(self) -> Channel:
         try:
@@ -77,8 +72,8 @@ class AmqpClient:
             await self.declare_exchange(channel)
 
             return channel
-        except:
-            log.error(f'Could not create channel.')
+        except Exception as err:
+            log.error(f'Could not create channel: {err}')
 
     async def declare_exchange(self, channel: Channel) -> None:
         self.exchange: Exchange = await channel.declare_exchange(
@@ -98,9 +93,6 @@ class AmqpClient:
     ):
         try:
             async def send_message(correlation_id: str = '', reply_to: str = ''):
-                log.info(
-                    f'Publishing amqp message: {routing_key}: {pretty_format(payload)}'
-                )
                 await self.exchange.publish(
                     Message(
                         body=bytes(payload, 'utf-8'),
