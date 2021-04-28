@@ -51,10 +51,10 @@ class RpcRequest:
 
         return handle_rpc_message
 
-    async def timeout_request(self):
+    async def timeout_request(self, correlation_id: str, reply_to: str):
         await asyncio.sleep(self.rpc_timeout)
         if self.queue_has_been_deleted is False:
-            log.warn(f'Timed out waiting for AMQP rpc response.')
+            log.warn(
+                f'Timed out waiting for AMQP rpc response, correlation_id: {correlation_id}, reply_to: {reply_to}')
             await self.delete_queue()
             self.queue_has_been_deleted = True
-            pass

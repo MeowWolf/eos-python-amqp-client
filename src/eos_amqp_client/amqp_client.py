@@ -17,6 +17,7 @@ from .constants import (
     EXCHANGE_NAME,
     EXCHANGE_TYPE,
     RPC_TIMEOUT_SECONDS,
+    PREFETCH_COUNT,
 )
 from .logger import create_logger
 from .rpc_request import RpcRequest
@@ -38,6 +39,7 @@ class AmqpClient:
         rpc_timeout: int = RPC_TIMEOUT_SECONDS,
         exchange_name: str = EXCHANGE_NAME,
         exchange_type: str = EXCHANGE_TYPE,
+        prefetch_count: int = PREFETCH_COUNT,
     ):
         self.connection: RobustConnection = None
         self.exchange: Exchange = None
@@ -51,13 +53,15 @@ class AmqpClient:
         self.routing_keys: List[str] = []
         self.exchange_name: str = exchange_name
         self.exchange_type: str = exchange_type
+        self.prefetch_count: str = prefetch_count
 
     async def connect(self) -> RobustConnection:
         protocol: str = 'amqps' if USE_TLS is True else 'amqp'
 
         try:
             self.connection = await connect_robust(
-                f'{protocol}://{self.username}:{self.password}@{self.host}:{self.port}',
+                url=f'{protocol}://{self.username}:{self.password}@{self.host}:{self.port}',
+                timeout=self.amqp_reconnect_seconds,
             )
 
         except Exception as err:
@@ -68,7 +72,7 @@ class AmqpClient:
     async def create_channel(self) -> Channel:
         try:
             channel: Channel = await self.connection.channel()
-            await channel.set_qos(prefetch_count=10)
+            await channel.set_qos(prefetch_count=self.prefetch_count)
             await self.declare_exchange(channel)
 
             return channel
@@ -89,7 +93,7 @@ class AmqpClient:
         payload: str,
         is_rpc: bool = False,
         channel: Channel = None,
-        handle_message: Callable[[IncomingMessage], None] = None,
+        handle_rpc_message: Callable[[IncomingMessage], None] = None,
     ):
         try:
             async def send_message(correlation_id: str = '', reply_to: str = ''):
@@ -110,11 +114,15 @@ class AmqpClient:
                 )
 
                 await rpc_request.declare_queue()
-                message_handler: Callable[[IncomingMessage], None] = rpc_request.create_message_handler(
-                    handle_message)
-                await rpc_request.queue.consume(message_handler)
+                await rpc_request.queue.consume(rpc_request.create_message_handler(handle_rpc_message))
+
                 await send_message(rpc_request.correlation_id, rpc_request.reply_to)
-                asyncio.create_task(rpc_request.timeout_request())
+                asyncio.create_task(
+                    rpc_request.timeout_request(
+                        rpc_request.correlation_id,
+                        rpc_request.reply_to,
+                    )
+                )
             else:
                 await send_message()
 
@@ -127,6 +135,9 @@ class AmqpClient:
         routing_keys: Union[List[str], str],
         handle_message: Callable[[IncomingMessage], None],
         queue_name: str = '',
+        auto_delete: bool = True,
+        exclusive: bool = True,
+        durable: bool = False,
     ) -> None:
 
         if isinstance(routing_keys, str):
@@ -134,9 +145,9 @@ class AmqpClient:
 
         queue: Queue = await channel.declare_queue(
             name=queue_name,
-            auto_delete=True,
-            exclusive=True,
-            durable=False,
+            auto_delete=auto_delete,
+            exclusive=exclusive,
+            durable=durable,
         )
 
         [await queue.bind(self.exchange, routing_key) for routing_key in routing_keys]
