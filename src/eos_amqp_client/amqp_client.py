@@ -1,9 +1,10 @@
 import asyncio
 from asyncio.events import AbstractEventLoop
-from typing import Callable, List
+from typing import Callable, List, Union
 from aio_pika.channel import Channel
 
 from aio_pika.exchange import Exchange
+from aio_pika.message import IncomingMessage
 from aio_pika.queue import Queue
 from aio_pika.robust_connection import RobustConnection
 
@@ -34,7 +35,6 @@ log = create_logger(__name__)
 class AmqpClient:
     def __init__(
         self,
-        routing_key_string: str = ROUTING_KEYS_TO_LISTEN_TO,
         host: str = HOST,
         port: int = PORT,
         username: str = USERNAME,
@@ -67,7 +67,7 @@ class AmqpClient:
                 f'{protocol}://{self.username}:{self.password}@{self.host}:{self.port}', loop=loop
             )
 
-        except:  # pragma: no cover
+        except:
             log.info(f'Could not connect to amqp broker. Retrying...')
             await asyncio.sleep(self.amqp_reconnect_seconds)
             return await self.connect(loop)
@@ -79,7 +79,7 @@ class AmqpClient:
             await self.declare_exchange(channel)
 
             return channel
-        except:  # pragma: no cover
+        except:
             log.error(f'Could not create channel.')
 
     async def declare_exchange(self, channel: Channel) -> None:
@@ -127,19 +127,27 @@ class AmqpClient:
         except Exception as err:
             log.error(f'Error publishing AMQP message: {err}')
 
-    async def consume(self, loop: AbstractEventLoop = asyncio.get_event_loop()) -> RobustConnection:
-        connection: RobustConnection = await self.connect(loop)
+    async def consume(
+        self,
+        channel: Channel,
+        routing_keys: Union[List[str], str],
+        handle_message: Callable[[IncomingMessage], None],
+        queue_name: str = '',
+    ) -> None:
 
-        queue: Queue = await self.channel.declare_queue(
-            name=self.queue_name,
+        if isinstance(routing_keys, str):
+            routing_keys = [routing_keys]
+
+        queue: Queue = await channel.declare_queue(
+            name=queue_name,
             auto_delete=True,
             exclusive=True,
             durable=False,
         )
-        [await queue.bind(self.exchange, routing_key) for routing_key in self.routing_keys]
-        # await queue.consume(self.handle_message)
+
+        [await queue.bind(self.exchange, routing_key) for routing_key in routing_keys]
+
+        await queue.consume(handle_message)
 
         log.info(f'AMQP connection established to: {self.exchange_name}')
-        log.info(f'listening to: {self.routing_keys}')
-
-        return connection
+        log.info(f'listening to: {routing_keys}')
