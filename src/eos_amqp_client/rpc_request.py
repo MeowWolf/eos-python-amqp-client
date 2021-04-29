@@ -1,6 +1,5 @@
 from typing import Callable
 from uuid import uuid4
-from aio_pika.queue import Queue
 from .constants import RPC_TIMEOUT_SECONDS
 from .logger import create_logger
 import asyncio
@@ -8,6 +7,8 @@ from aio_pika import (
     IncomingMessage,
     Channel,
 )
+from aio_pika.queue import Queue
+
 log = create_logger(__name__)
 
 
