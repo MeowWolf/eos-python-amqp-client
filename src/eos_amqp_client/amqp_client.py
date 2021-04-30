@@ -1,13 +1,16 @@
 import asyncio
 from typing import Callable, List, Union
 from aio_pika.channel import Channel
-
 from aio_pika.exchange import Exchange
 from aio_pika.message import IncomingMessage
 from aio_pika.queue import Queue
 from aio_pika.robust_connection import RobustConnection
+from aio_pika import (
+    connect_robust,
+    Message,
+)
 
-from .constants import (
+from eos_amqp_client.constants import (
     HOST,
     USERNAME,
     USE_TLS,
@@ -19,12 +22,8 @@ from .constants import (
     RPC_TIMEOUT_SECONDS,
     PREFETCH_COUNT,
 )
-from .logger import create_logger
-from .rpc_request import RpcRequest
-from aio_pika import (
-    connect_robust,
-    Message,
-)
+from eos_amqp_client.logger import create_logger
+from eos_amqp_client.rpc_request import RpcRequest
 log = create_logger(__name__)
 
 
@@ -76,7 +75,7 @@ class AmqpClient:
             await self.declare_exchange(channel)
 
             return channel
-        except Exception as err:
+        except Exception as err:  # pragma no cover
             log.error(f'Could not create channel: {err}')
 
     async def declare_exchange(self, channel: Channel) -> None:
