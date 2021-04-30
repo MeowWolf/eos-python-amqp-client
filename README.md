@@ -1,6 +1,6 @@
 # EOS Python AMQP Client
 
-### Quick & Dirty Example Usaage
+### Quick & Dirty Example Usage
 (An actual README will be written soon)
 ```python
 import asyncio
