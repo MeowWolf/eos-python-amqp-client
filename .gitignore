@@ -3,6 +3,6 @@ eos_amqp_client.egg-info
 __pycache__
 htmlcov
 .coverage
-.vscode
+.vscode/.ropeproject
 .venv
 .env

@@ -1,0 +1,13 @@
+{
+  "python.testing.pytestArgs": [
+    "--cov-config=.coveragerc",
+    "--cov=src",
+    "--cov-report=html",
+    "--cov-report=term"
+  ],
+  "python.testing.unittestEnabled": false,
+  "python.testing.nosetestsEnabled": false,
+  "python.testing.pytestEnabled": true,
+  "python.pythonPath": "${workspaceFolder}/.venv/bin/python",
+  "editor.defaultFormatter": "ms-python.python",
+}
