@@ -1,20 +1,60 @@
 # EOS Python AMQP Client
 
-### Quick & Dirty Example Usage
-(An actual README will be written soon)
+## Installation
+
+```sh
+pip install git+https://github.com/MeowWolf/eos-python-amqp-client.git
+```
+
+## Usage
+
+### Initialize and connect
+
 ```python
-import asyncio
 from eos_amqp_client import (
     AmqpClient,
-    IncomingMessage,
 )
 
+async def main():
+    # Initialize
+    amqp = AmqpClient(
+        host='localhost',
+        port=5672,
+        username='rabbitmq',
+        password='rabbitmq',
+        exchange_name='amq.topic',
+        exchange_type='topic',
+    )
+
+    # Connect
+    await amqp.connect()
+
+    # Create a channel
+    chan = await amqp.create_channel()
+```
+
+### Publish a message
+
+```python
+async def main():
+    await amqp.publish(
+        routing_key='publish.to',
+        payload="{'test': 'message'}",
+        channel=chan,
+    )
+```
+
+### Publish a message with rpc response
+
+```python
+from eos_amqp_client import (
+    IncomingMessage,
+)
 
 async def handle_message(message: IncomingMessage):
     # context manager handles acking for us
     async with message.process():
         try:
-            # we don't want to send a message back to ourselves
             payload = message.body.decode('utf-8')
             routing_key = message.routing_key
 
@@ -26,71 +66,84 @@ async def handle_message(message: IncomingMessage):
 
 
 async def main():
-    amqp = AmqpClient(
-        host='localhost',
-        port=5672,
-        username='rabbitmq',
-        password='rabbitmq',
-        exchange_name='amq.topic',
-        exchange_type='topic',
-    )
-    # await amqp.connect(asyncio.get_event_loop())
-    await amqp.connect()
-    print(f'this is conn {amqp.connection}')
-    chan = await amqp.create_channel()
-    print(f'this is chan {chan}')
-
-    print('hello')
     await amqp.publish(
-        # routing_key='test.okay',
-        routing_key='device.codeA.get',
+        routing_key='publish.to',
         payload="{'test': 'message'}",
-        is_rpc=True,
         channel=chan,
+        is_rpc=True,
         handle_rpc_message=handle_message
     )
-    print('world')
+```
 
-    # await amqp.consume(chan, ['super.test', 'super.wolf'], handle_message)
+### Set up a consumer
+
+```python
+import asyncio
+from eos_amqp_client import (
+    IncomingMessage,
+)
+
+async def handle_message(message: IncomingMessage):
+    # handle message
+    # don't forget to ack! (see rpc message handler above for example)
+    pass
+
+async def main():
+    asyncio.get_event_loop().create_task(
+        channel=chan,
+        routing_keys=['super.test', 'super.wolf'],
+        handle_message=handle_message,
+        queue_name='python-client-test',
+    ),
+```
+
+### Set up multiple consumers
+
+```python
+import asyncio
+from eos_amqp_client import (
+    IncomingMessage,
+)
+
+async def handle_message(message: IncomingMessage):
+    # handle message
+    # don't forget to ack! (see rpc message handler above for example)
+    pass
+
+async def main():
     await asyncio.gather(
-        # loop.create_task(
         amqp.consume(
             channel=chan,
             routing_keys=['super.test', 'super.wolf'],
             handle_message=handle_message,
             queue_name='python-client-test',
         ),
-        # )
-        # loop.create_task(
         amqp.consume(
             channel=chan,
-            routing_keys=['other.test', 'super.wolf'],
+            routing_keys=['other.test', 'swear.wolf'],
             handle_message=handle_message,
             queue_name='python-client-test2',
         )
     )
+```
 
-# loop.create_task(main())
+### Run using the event loop
 
-print('oh hi')
+```python
+import asyncio
+
 loop = asyncio.get_event_loop()
 try:
+    # the main function as used in the above examples
     loop.create_task(main())
 except:
-    print("yayayayaya!!!!!!!!!")
+    print("Something did not go according to plan.")
 
 loop.run_forever()
-
-# asyncio.create_task(asyncio.get_event_loop().run_until_complete(main()))
-# asyncio.create_task(rpc_request.timeout_request())
-# asyncio.run(main())
-
-# def start(self):
-#     try:
-#         loop = asyncio.get_event_loop()
-#         loop.run_until_complete(self.run())
-#         loop.run_forever()
-#     except KeyboardInterrupt:  # pragma: no cover
-#         log.info(f'asyncio loop closed')
-
 ```
+
+## Run the tests
+
+Use vscode.
+Make sure you've got the `ms-python.python` extension installed and run the tests via the test pane in the editor.
+Coverage is generated in an `htmlcov` directory in the root of the project
