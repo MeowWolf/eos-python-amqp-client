@@ -90,10 +90,12 @@ async def handle_message(message: IncomingMessage):
 
 async def main():
     asyncio.get_event_loop().create_task(
-        channel=chan,
-        routing_keys=['super.test', 'super.wolf'],
-        handle_message=handle_message,
-        queue_name='python-client-test',
+        amqp.consume(
+            channel=chan,
+            routing_keys=['super.test', 'super.wolf'],
+            handle_message=handle_message,
+            queue_name='python-client-test',
+        )
     ),
 ```
 
