@@ -30,6 +30,7 @@ log = create_logger(__name__)
 class AmqpClient:
     def __init__(
         self,
+        use_tls: bool = USE_TLS,
         host: str = HOST,
         port: int = PORT,
         username: str = USERNAME,
@@ -43,6 +44,7 @@ class AmqpClient:
         self.connection: RobustConnection = None
         self.exchange: Exchange = None
 
+        self.use_tls: bool = use_tls
         self.host: str = host
         self.port: int = port
         self.username: str = username
@@ -55,7 +57,7 @@ class AmqpClient:
         self.prefetch_count: str = prefetch_count
 
     async def connect(self) -> RobustConnection:
-        protocol: str = 'amqps' if USE_TLS is True else 'amqp'
+        protocol: str = 'amqps' if self.username is True else 'amqp'
 
         try:
             self.connection = await connect_robust(
